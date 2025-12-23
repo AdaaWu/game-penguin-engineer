@@ -90,7 +90,7 @@ Fonts: Google Fonts (Noto Sans TC, VT323)
 
 🚀 如何執行
 
-下載 penguin_interview.html 檔案。
+下載 index.html 檔案。
 
 直接使用瀏覽器 (Chrome, Edge, Firefox, Safari) 開啟該檔案。
 
