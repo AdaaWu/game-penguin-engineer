@@ -1,0 +1,704 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>別讓面試官發現我是一隻企鵝</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700&family=VT323&family=Roboto+Mono:wght@500&display=swap');
+
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            overflow: hidden;
+            background-color: #1a202c;
+            color: white;
+            user-select: none;
+        }
+
+        #game-canvas {
+            background: linear-gradient(to bottom, #f0f4f8 0%, #d9e2ec 100%);
+            box-shadow: inset 0 0 50px rgba(0,0,0,0.1);
+            cursor: none; /* Hide default cursor */
+        }
+
+        .terminal-text {
+            font-family: 'VT323', monospace;
+            text-shadow: 0 0 5px rgba(0, 255, 0, 0.5);
+        }
+
+        .typing-font {
+            font-family: 'Roboto Mono', monospace;
+        }
+
+        #ui-layer {
+            pointer-events: none; /* Let clicks pass through to game logic if needed */
+        }
+
+        .shake {
+            animation: shake 0.3s cubic-bezier(.36,.07,.19,.97) both;
+        }
+
+        @keyframes shake {
+            10%, 90% { transform: translate3d(-1px, 0, 0); }
+            20%, 80% { transform: translate3d(2px, 0, 0); }
+            30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
+            40%, 60% { transform: translate3d(4px, 0, 0); }
+        }
+    </style>
+</head>
+<body class="h-screen w-screen flex flex-col items-center justify-center relative">
+
+    <!-- Start Screen -->
+    <div id="start-screen" class="absolute z-50 bg-gray-900 bg-opacity-95 w-full h-full flex flex-col items-center justify-center text-center p-4">
+        <h1 class="text-6xl font-bold mb-4 text-yellow-400">🐧 別讓面試官發現我是一隻企鵝</h1>
+        <div class="bg-gray-800 p-6 rounded-lg border-2 border-gray-600 max-w-2xl">
+            <p class="text-xl mb-6">你是 <span class="font-bold text-blue-300">Pingu++</span>，一隻偽裝成高級工程師的企鵝。</p>
+            <ul class="text-left space-y-4 mb-8 text-lg">
+                <li>⌨️ <strong>打字檢定</strong>：依照螢幕指示輸入 <span class="text-green-400 font-mono">程式碼(水果)</span> 來回答問題。</li>
+                <li>⏱️ <strong>保持活躍</strong>：如果不打字也不動滑鼠，<strong>10秒後就會滑落</strong>！</li>
+                <li>🖱️ <strong>移動滑鼠</strong>：稍微動一下就能重置滑落倒數。</li>
+                <li>🐟 <strong>空白鍵 (Space)</strong>：遇到難題時，吐出一條魚轉移注意力 (限 3 次)。</li>
+            </ul>
+            <button onclick="startGame()" class="px-8 py-4 bg-green-600 hover:bg-green-500 text-white font-bold rounded text-2xl shadow-lg transform transition hover:scale-105">
+                開始面試 (目標：回答 5 題)
+            </button>
+        </div>
+    </div>
+
+    <!-- Game Over Screen -->
+    <div id="game-over-screen" class="hidden absolute z-50 bg-red-900 bg-opacity-95 w-full h-full flex flex-col items-center justify-center text-center p-4">
+        <h1 class="text-6xl font-bold mb-4 text-white">面試失敗</h1>
+        <p id="death-reason" class="text-3xl text-yellow-300 mb-8 font-bold">原因...</p>
+        <p id="final-score" class="text-xl text-white mb-8">成功回答了 0 個問題</p>
+        <button onclick="location.reload()" class="px-8 py-4 bg-white text-red-900 font-bold rounded text-xl shadow-lg hover:bg-gray-200">
+            再試一次 (投遞履歷)
+        </button>
+    </div>
+
+    <!-- Victory Screen -->
+    <div id="game-win-screen" class="hidden absolute z-50 bg-green-900 bg-opacity-95 w-full h-full flex flex-col items-center justify-center text-center p-4">
+        <h1 class="text-6xl font-bold mb-4 text-white">🎉 面試通過！ 🎉</h1>
+        <p class="text-3xl text-yellow-300 mb-8 font-bold">你被錄取了！</p>
+        <p class="text-xl text-white mb-8">雖然他們覺得你都在寫水果名稱，但你的手速太驚人了。</p>
+        <p class="text-lg text-gray-200 mb-8">職位：首席吃魚工程師 (Chief Fish Officer)</p>
+        <button onclick="location.reload()" class="px-8 py-4 bg-white text-green-900 font-bold rounded text-xl shadow-lg hover:bg-gray-200">
+            再次面試 (挑戰更高薪)
+        </button>
+    </div>
+
+    <!-- UI Overlay -->
+    <div id="ui-layer" class="absolute top-0 left-0 w-full h-full p-4 flex flex-col justify-between z-10 hidden">
+        
+        <!-- Top Stats -->
+        <div class="flex justify-between items-start w-full">
+            <!-- Suspicion Meter -->
+            <div class="w-1/3 bg-gray-800 bg-opacity-80 p-3 rounded border border-gray-600">
+                <div class="flex justify-between mb-1">
+                    <span class="text-sm font-bold text-red-300">面試官懷疑度</span>
+                    <span id="suspicion-text">0%</span>
+                </div>
+                <div class="w-full bg-gray-700 h-4 rounded overflow-hidden">
+                    <div id="suspicion-bar" class="h-full bg-red-500 transition-all duration-200" style="width: 0%"></div>
+                </div>
+            </div>
+
+            <!-- Question Box -->
+            <div class="w-1/3 text-center">
+                <div class="bg-white text-black p-4 rounded-lg shadow-xl border-b-4 border-gray-300 relative">
+                    <div class="absolute -bottom-2 left-1/2 w-4 h-4 bg-white transform -translate-x-1/2 rotate-45"></div>
+                    <p class="text-xs text-gray-500 uppercase tracking-widest mb-1">面試官 Question</p>
+                    <p id="question-text" class="text-lg font-bold">請自我介紹並解釋為什麼你沒有穿褲子？</p>
+                </div>
+            </div>
+
+            <!-- Idle/Slip Timer -->
+            <div class="w-1/3 bg-gray-800 bg-opacity-80 p-3 rounded border border-gray-600 flex flex-col items-end">
+                <div class="flex justify-between mb-1 w-full text-right">
+                    <span class="text-sm font-bold text-yellow-300 w-full">⚠️ 滑落警報 (10s)</span>
+                    <span id="idle-text" class="text-sm font-mono text-white">0.0s</span>
+                </div>
+                <div class="w-full bg-gray-700 h-6 rounded overflow-hidden relative border border-gray-500">
+                    <!-- Ticks for seconds -->
+                    <div class="absolute top-0 left-0 w-full h-full flex justify-between px-1 pointer-events-none z-10 opacity-30">
+                        <div class="w-px h-full bg-black"></div><div class="w-px h-full bg-black"></div><div class="w-px h-full bg-black"></div><div class="w-px h-full bg-black"></div><div class="w-px h-full bg-black"></div>
+                        <div class="w-px h-full bg-black"></div><div class="w-px h-full bg-black"></div><div class="w-px h-full bg-black"></div><div class="w-px h-full bg-black"></div><div class="w-px h-full bg-black"></div>
+                    </div>
+                    <div id="instinct-bar" class="h-full bg-yellow-400 transition-all duration-75" style="width: 0%"></div>
+                    <div class="absolute top-0 left-0 w-full h-full flex justify-center items-center">
+                        <span class="text-xs text-black font-bold opacity-70">動一動滑鼠或打字！</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Typing Interface (New) -->
+        <div id="typing-container" class="absolute top-[35%] left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center z-20">
+            <div class="bg-black bg-opacity-80 p-6 rounded-xl border-4 border-blue-500 backdrop-blur-md shadow-2xl transition-transform duration-100" id="typing-box">
+                <p class="text-blue-300 text-xs mb-2 uppercase tracking-[0.2em] font-bold">Type This Variable</p>
+                <div id="typing-text" class="text-5xl font-mono font-bold tracking-widest whitespace-nowrap typing-font">
+                    <!-- Text injected by JS -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Fish Ammo -->
+        <div class="absolute top-24 right-4 flex flex-col items-end">
+            <span class="text-sm font-bold mb-1 shadow-black drop-shadow-md">緊急誘餌 (Space)</span>
+            <div id="fish-container" class="text-3xl">🐟 🐟 🐟</div>
+        </div>
+
+        <!-- Middle: Code Output -->
+        <div class="absolute top-1/2 left-4 transform -translate-y-1/2 w-64 h-64 bg-black opacity-80 rounded p-2 overflow-hidden border border-green-500 terminal-text text-green-400 text-sm">
+            <div id="code-display" class="w-full h-full flex flex-col justify-end whitespace-pre-wrap break-all">
+                // System Initialized...
+                // Waiting for input...
+            </div>
+        </div>
+
+        <!-- Bottom: Progress -->
+        <div class="w-full flex flex-col items-center mb-4">
+            <div class="w-2/3 bg-gray-900 p-2 rounded-full border-2 border-blue-500 relative">
+                <div id="answer-bar" class="h-6 bg-blue-500 rounded-full transition-all duration-75" style="width: 0%"></div>
+                <p class="absolute top-0 left-0 w-full h-full flex justify-center items-center text-sm font-bold text-white shadow-black drop-shadow-md">
+                    回答進度
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Canvas Layer -->
+    <canvas id="game-canvas" class="rounded shadow-2xl"></canvas>
+
+    <script>
+        // --- Game Configuration & State ---
+        const canvas = document.getElementById('game-canvas');
+        const ctx = canvas.getContext('2d');
+        
+        let gameState = 'START'; // START, PLAYING, GAMEOVER
+        let width, height;
+        let lastTime = 0;
+
+        // Mechanics
+        let balance = 0; // Visual only now
+        let realMouseX = 0; 
+        let realMouseY = 0; 
+        
+        let suspicion = 0; // 0 to 100
+        let idleTimer = 0; // 0 to 10 seconds
+        const MAX_IDLE_TIME = 10.0;
+
+        let answerProgress = 0; // 0 to 100
+        let fishCount = 3;
+        let score = 0; // Questions answered
+
+        // Typing System
+        const wordList = [
+            "apple", "banana", "cherry", "date", "elderberry", "fig", "grape", 
+            "honeydew", "kiwi", "lemon", "mango", "nectarine", "orange", 
+            "papaya", "quince", "raspberry", "strawberry", "tangerine", 
+            "ugli", "watermelon", "blueberry", "blackberry", "coconut", 
+            "durian", "guava", "lime", "lychee", "olive", "peach", "pear", 
+            "pineapple", "plum", "pomegranate", "pomelo"
+        ];
+        let currentWord = "";
+        let currentWordIndex = 0;
+
+        // Content
+        const questions = [
+            "解釋為什麼我們要錄取一隻...呃，錄取你？",
+            "如何反轉一個二元樹？請用白板筆寫在螢幕上。",
+            "你對南極洲的雲端伺服器架構有什麼看法？",
+            "這段 COBOL 程式碼為什麼會有魚腥味？",
+            "如果你的同事是海豹，你該如何與他協作？",
+            "請優化這個 O(n^2) 的演算法，不然沒午餐吃。",
+            "為什麼你的鍵盤上全是水漬？",
+            "解釋 Kubernetes，假設我是一隻帝王企鵝。",
+            "你的西裝似乎... 和身體長在一起？",
+            "我們公司實行 996，但你是夜行性動物嗎？",
+            "如何在不使用滑鼠的情況下捕獲... 錯誤？"
+        ];
+        
+        const codeSnippets = [
+            "import fish;",
+            "details.slide(belly);",
+            "if (hungry) { eat(sushi); }",
+            "public void nootNoot() {}",
+            "try { fly(); } catch (GravityError e) {}",
+            "while(ice_is_melting) { panic(); }",
+            "const suit = 'natural_feathers';",
+            "sudo apt-get install herring",
+            "git push origin antarctica",
+            "var wiggle = true;",
+            "// TODO: Hide beak",
+            "console.log('Squawk!');"
+        ];
+
+        let currentQuestion = "";
+        let codeLines = ["// Ready for interview..."];
+
+        // Sprites/Visuals placeholders
+        const penguinColor = '#333';
+        const bellyColor = '#fff';
+        const suitColor = '#1a202c';
+        
+        // --- Initialization ---
+        function resize() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        function startGame() {
+            document.getElementById('start-screen').classList.add('hidden');
+            document.getElementById('game-over-screen').classList.add('hidden');
+            document.getElementById('game-win-screen').classList.add('hidden');
+            document.getElementById('ui-layer').classList.remove('hidden');
+            
+            gameState = 'PLAYING';
+            resetGame();
+            lastTime = performance.now();
+            requestAnimationFrame(gameLoop);
+        }
+
+        function resetGame() {
+            balance = 0;
+            suspicion = 0;
+            idleTimer = 0;
+            answerProgress = 0;
+            fishCount = 3;
+            score = 0;
+            codeLines = ["// Interview Start"];
+            nextQuestion();
+            spawnNewWord();
+            updateUI();
+        }
+
+        function nextQuestion() {
+            currentQuestion = questions[Math.floor(Math.random() * questions.length)];
+            document.getElementById('question-text').innerText = currentQuestion;
+            answerProgress = 0;
+        }
+
+        function spawnNewWord() {
+            currentWord = wordList[Math.floor(Math.random() * wordList.length)];
+            currentWordIndex = 0;
+            updateTypingDisplay();
+        }
+
+        function updateTypingDisplay() {
+            const display = document.getElementById('typing-text');
+            const typedPart = currentWord.substring(0, currentWordIndex);
+            const untypedPart = currentWord.substring(currentWordIndex);
+            
+            display.innerHTML = `<span class="text-green-400 border-b-4 border-green-500">${typedPart}</span><span class="text-gray-500">${untypedPart}</span>`;
+        }
+
+        // --- Input Handling ---
+        function resetIdle() {
+            if (gameState === 'PLAYING') {
+                idleTimer = 0; // Reset timer on activity
+            }
+        }
+
+        window.addEventListener('mousemove', (e) => {
+            if (gameState !== 'PLAYING') return;
+            realMouseX = e.clientX;
+            realMouseY = e.clientY;
+            resetIdle();
+        });
+
+        window.addEventListener('keydown', (e) => {
+            if (gameState !== 'PLAYING') return;
+            resetIdle();
+
+            // Spacebar = Fish
+            if (e.code === 'Space') {
+                e.preventDefault();
+                throwFish();
+                return;
+            }
+
+            // Typing Logic
+            if (e.key.length === 1) { // Ignore modifiers like Shift/Ctrl
+                checkTyping(e.key);
+            }
+        });
+
+        function checkTyping(key) {
+            // Case insensitive check
+            if (key.toLowerCase() === currentWord[currentWordIndex].toLowerCase()) {
+                // Correct
+                currentWordIndex++;
+                
+                // Add fake code line for visual effect
+                if (Math.random() > 0.6) {
+                    const snippet = codeSnippets[Math.floor(Math.random() * codeSnippets.length)];
+                    codeLines.push(snippet);
+                    if (codeLines.length > 12) codeLines.shift();
+                    updateCodeDisplay();
+                }
+
+                // Logic
+                answerProgress += 3; // Small progress per letter
+                
+                if (currentWordIndex >= currentWord.length) {
+                    // Word Complete
+                    answerProgress += 5; // Bonus for finishing word
+                    spawnNewWord();
+                    triggerFeedback("Nice Code!", width/2, height/2 - 50, "#4ade80");
+                    
+                    // UI Bounce effect
+                    const box = document.getElementById('typing-box');
+                    box.classList.add('scale-110');
+                    setTimeout(() => box.classList.remove('scale-110'), 100);
+                }
+                
+                updateTypingDisplay();
+                playTypeSound();
+
+                // Check Level Complete
+                if (answerProgress >= 100) {
+                    levelComplete();
+                }
+
+            } else {
+                // Wrong
+                const box = document.getElementById('typing-box');
+                box.classList.add('shake', 'border-red-500');
+                setTimeout(() => box.classList.remove('shake', 'border-red-500'), 300);
+                // Slight penalty?
+                // suspicion += 2;
+                triggerFeedback("Typo!", width/2, height/2, "red");
+            }
+        }
+
+        function levelComplete() {
+            answerProgress = 0;
+            score++;
+            
+            // Win Condition: 5 Questions
+            if (score >= 5) {
+                gameWin();
+                return;
+            }
+
+            // Reward
+            suspicion = Math.max(0, suspicion - 25); 
+            triggerFeedback("Correct Answer!", width/2, height/2 - 100, "green");
+            triggerFeedback("懷疑度大幅下降!", width/2, height/2 - 150, "blue");
+            nextQuestion();
+            spawnNewWord();
+        }
+
+        function throwFish() {
+            if (fishCount > 0) {
+                fishCount--;
+                suspicion = Math.max(0, suspicion - 40); 
+                idleTimer = 0; // Also resets idle
+                triggerFeedback("🐟 魚餌戰術!", width/2, height/2, "blue");
+                createParticle(width/2, height/2, '🐟');
+                updateUI();
+            } else {
+                triggerFeedback("沒魚了!", width/2, height/2, "red");
+            }
+        }
+
+        function updateCodeDisplay() {
+            document.getElementById('code-display').innerText = codeLines.join('\n');
+        }
+
+        let lastTypingTime = 0;
+        function playTypeSound() {
+            lastTypingTime = Date.now();
+        }
+
+        // --- Game Logic ---
+        function update(dt) {
+            // Increase idle timer
+            idleTimer += dt / 1000;
+
+            // Visual balance calculation (Wobble increases as timer fills)
+            // 0s = stable. 9s = very wobbly.
+            let wobbleIntensity = (idleTimer / MAX_IDLE_TIME) * 45; // Max 45 degrees
+            balance = Math.sin(Date.now() / 200) * wobbleIntensity;
+
+            // Suspicion rises slowly over time
+            suspicion += 0.8 * (dt / 1000); // Slower suspicion rise
+
+            // Win/Loss Checks
+            if (idleTimer >= MAX_IDLE_TIME) {
+                gameOver("發呆太久，從椅子上滑下去了！");
+            }
+            if (suspicion >= 100) {
+                gameOver("面試官識破了你的偽裝。");
+            }
+
+            updateUI();
+        }
+
+        function updateUI() {
+            document.getElementById('suspicion-bar').style.width = `${Math.min(100, suspicion)}%`;
+            document.getElementById('suspicion-text').innerText = `${Math.floor(suspicion)}%`;
+            
+            // Idle Timer UI
+            let idlePercent = (idleTimer / MAX_IDLE_TIME) * 100;
+            document.getElementById('instinct-bar').style.width = `${Math.min(100, idlePercent)}%`;
+            // Change color based on urgency
+            let barColor = idleTimer > 7 ? 'bg-red-500' : (idleTimer > 4 ? 'bg-yellow-400' : 'bg-green-400');
+            document.getElementById('instinct-bar').className = `h-full transition-all duration-75 ${barColor}`;
+            document.getElementById('idle-text').innerText = idleTimer.toFixed(1) + "s";
+
+            document.getElementById('answer-bar').style.width = `${Math.min(100, answerProgress)}%`;
+            let fishStr = "";
+            for(let i=0; i<fishCount; i++) fishStr += "🐟 ";
+            document.getElementById('fish-container').innerText = fishStr;
+        }
+
+        function gameOver(reason) {
+            gameState = 'GAMEOVER';
+            document.getElementById('ui-layer').classList.add('hidden');
+            document.getElementById('game-over-screen').classList.remove('hidden');
+            document.getElementById('death-reason').innerText = reason;
+            document.getElementById('final-score').innerText = `你成功回答了 ${score} 個問題，但矽谷不適合企鵝。`;
+        }
+
+        function gameWin() {
+            gameState = 'GAMEOVER';
+            document.getElementById('ui-layer').classList.add('hidden');
+            document.getElementById('game-win-screen').classList.remove('hidden');
+        }
+
+        // --- Rendering ---
+        function draw(ctx) {
+            ctx.clearRect(0, 0, width, height);
+
+            // Draw Office Background
+            ctx.fillStyle = '#e2e8f0';
+            ctx.fillRect(0, height * 0.6, width, height * 0.4); 
+            
+            // Draw Desk
+            ctx.fillStyle = '#718096';
+            ctx.fillRect(width * 0.1, height * 0.6, width * 0.8, height * 0.4);
+            
+            // Draw Interviewer
+            ctx.fillStyle = '#2d3748';
+            ctx.beginPath();
+            ctx.arc(width * 0.5, height * 0.4, 60, 0, Math.PI * 2); 
+            ctx.fill();
+            ctx.fillRect(width * 0.4, height * 0.4, width * 0.2, height * 0.2);
+            ctx.fillStyle = 'rgba(255,255,255,0.1)';
+            ctx.font = '20px Arial';
+            ctx.fillText("👀", width * 0.5 - 10, height * 0.4);
+
+            // Penguin Setup
+            ctx.save();
+            let anchorX = width / 2;
+            let anchorY = height * 0.75;
+            ctx.translate(anchorX, anchorY); 
+            
+            let rotation = (balance * Math.PI) / 180;
+            ctx.rotate(rotation);
+
+            drawPenguin(ctx);
+            
+            // Draw Warning Signs if Idle is high
+            if (idleTimer > 7) {
+                // Shake effect is handled by balance wobble, adding visual sweat
+                ctx.fillStyle = 'rgba(255,0,0,0.5)';
+                ctx.font = '30px Arial';
+                ctx.fillText("!!!", 0, -150);
+            }
+
+            ctx.restore(); // Restore to world space
+
+            // Draw Mouse Cursor Visual (to encourage movement)
+            if (idleTimer > 2) {
+                ctx.beginPath();
+                ctx.arc(realMouseX, realMouseY, 5 + (idleTimer*2), 0, Math.PI*2);
+                ctx.strokeStyle = `rgba(255, 0, 0, ${idleTimer/10})`;
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+
+            // Draw Feedback Particles
+            updateAndDrawParticles(ctx);
+
+            // Screen Red overlay on danger
+            if (idleTimer > 8) {
+                ctx.fillStyle = `rgba(255, 0, 0, ${(idleTimer-8)/4})`;
+                ctx.fillRect(0, 0, width, height);
+                ctx.fillStyle = "white";
+                ctx.font = "bold 40px 'Noto Sans TC'";
+                ctx.textAlign = "center";
+                ctx.fillText("快動啊！！！", width/2, height/2 - 200);
+            }
+        }
+
+        function drawPenguin(ctx) {
+            const s = 1.5;
+            // Chair
+            ctx.fillStyle = '#4a5568';
+            ctx.fillRect(-60*s, 140*s, 120*s, 20*s); 
+            ctx.fillRect(-10*s, 80*s, 20*s, 60*s); 
+
+            // Body
+            ctx.fillStyle = penguinColor;
+            ctx.beginPath();
+            ctx.ellipse(0, 0, 70*s, 100*s, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Belly
+            ctx.fillStyle = bellyColor;
+            ctx.beginPath();
+            ctx.ellipse(0, 10*s, 45*s, 75*s, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Jacket
+            ctx.fillStyle = suitColor;
+            ctx.beginPath();
+            ctx.moveTo(-70*s, -20*s);
+            ctx.quadraticCurveTo(-30*s, 20*s, -40*s, 100*s);
+            ctx.lineTo(-70*s, 50*s);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.moveTo(70*s, -20*s);
+            ctx.quadraticCurveTo(30*s, 20*s, 40*s, 100*s);
+            ctx.lineTo(70*s, 50*s);
+            ctx.fill();
+
+            // Tie
+            ctx.fillStyle = '#e53e3e';
+            ctx.beginPath();
+            ctx.moveTo(0, -30*s);
+            ctx.lineTo(-10*s, 60*s);
+            ctx.lineTo(0, 70*s);
+            ctx.lineTo(10*s, 60*s);
+            ctx.fill();
+
+            // Face
+            ctx.fillStyle = 'white';
+            ctx.beginPath();
+            ctx.arc(-20*s, -60*s, 15*s, 0, Math.PI * 2); 
+            ctx.arc(20*s, -60*s, 15*s, 0, Math.PI * 2); 
+            ctx.fill();
+
+            // Pupils
+            ctx.fillStyle = 'black';
+            // Eyes follow mouse if not idle, else go crazy
+            let eyeX = (realMouseX - width/2) / 30;
+            let eyeY = (realMouseY - height/2) / 30;
+            if (idleTimer > 5) {
+                eyeX = (Math.random()-0.5) * 10;
+                eyeY = (Math.random()-0.5) * 10;
+            }
+
+            ctx.beginPath();
+            ctx.arc(-20*s + Math.max(-10, Math.min(10, eyeX)), -60*s + Math.max(-10, Math.min(10, eyeY)), 5*s, 0, Math.PI * 2);
+            ctx.arc(20*s + Math.max(-10, Math.min(10, eyeX)), -60*s + Math.max(-10, Math.min(10, eyeY)), 5*s, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Beak
+            ctx.fillStyle = '#ecc94b';
+            ctx.beginPath();
+            ctx.moveTo(-10*s, -50*s);
+            ctx.lineTo(10*s, -50*s);
+            ctx.lineTo(0, -35*s);
+            ctx.fill();
+
+            // Flippers
+            ctx.fillStyle = penguinColor;
+            
+            // Animate flippers if typing
+            let leftArmRot = Math.PI / 4;
+            let rightArmRot = -Math.PI / 4;
+            
+            if (Date.now() - lastTypingTime < 200) {
+                 leftArmRot += Math.sin(Date.now() / 50) * 0.2;
+                 rightArmRot -= Math.sin(Date.now() / 50) * 0.2;
+            }
+
+            ctx.save();
+            ctx.translate(-60*s, 20*s);
+            ctx.rotate(leftArmRot);
+            ctx.beginPath();
+            ctx.ellipse(0, 0, 20*s, 50*s, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+
+            ctx.save();
+            ctx.translate(60*s, 20*s);
+            ctx.rotate(rightArmRot);
+            ctx.beginPath();
+            ctx.ellipse(0, 0, 20*s, 50*s, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        }
+
+        // --- Particles ---
+        let particles = [];
+        function createParticle(x, y, text) {
+            particles.push({
+                x: x, y: y, text: text,
+                vx: (Math.random() - 0.5) * 5,
+                vy: -5 - Math.random() * 5,
+                life: 1.0
+            });
+        }
+
+        function triggerFeedback(text, x, y, color) {
+            const el = document.createElement('div');
+            el.innerText = text;
+            el.style.position = 'absolute';
+            el.style.left = x + 'px';
+            el.style.top = y + 'px';
+            el.style.color = color;
+            el.style.fontWeight = 'bold';
+            el.style.fontSize = '24px';
+            el.style.pointerEvents = 'none';
+            el.style.transition = 'all 1s ease-out';
+            el.style.zIndex = 100;
+            document.body.appendChild(el);
+
+            setTimeout(() => {
+                el.style.transform = 'translateY(-50px)';
+                el.style.opacity = 0;
+            }, 50);
+
+            setTimeout(() => el.remove(), 1000);
+        }
+
+        function updateAndDrawParticles(ctx) {
+            ctx.font = "30px Arial";
+            for (let i = particles.length - 1; i >= 0; i--) {
+                let p = particles[i];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life -= 0.02;
+                p.vy += 0.2; // Gravity
+
+                ctx.globalAlpha = p.life;
+                ctx.fillText(p.text, p.x, p.y);
+                ctx.globalAlpha = 1.0;
+
+                if (p.life <= 0) particles.splice(i, 1);
+            }
+        }
+
+        function gameLoop(timestamp) {
+            if (gameState !== 'PLAYING') return;
+
+            let dt = timestamp - lastTime;
+            lastTime = timestamp;
+
+            update(dt);
+            draw(ctx);
+            requestAnimationFrame(gameLoop);
+        }
+
+    </script>
+</body>
+</html>
